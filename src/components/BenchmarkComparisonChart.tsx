@@ -12,7 +12,7 @@ import {
 import { mcpClient } from '../services/mcpClient';
 import { BENCHMARKS } from '../data/benchmarks';
 import { PricePoint, MetricResults, ScenarioResult } from '../types';
-import { Plus, X, Award, ArrowRight, Minimize2, Maximize2, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { Plus, X, Award, ArrowRight, Minimize2, Maximize2, TrendingUp, DollarSign, Check, Sparkles, Trash2, Search } from 'lucide-react';
 
 interface BenchmarkComparisonChartProps {
   years: number;
@@ -36,6 +36,27 @@ interface TickerAnalytics {
 }
 
 const DEFAULT_COMPARISON_TICKERS = ['ES3.SI', 'SPY', 'VT', 'QQQ'];
+
+const POPULAR_TICKER_SUGGESTIONS = [
+  { symbol: 'ES3.SI', label: 'ES3.SI (STI SG)', name: 'SPDR Straits Times Index ETF' },
+  { symbol: 'SPY', label: 'SPY (S&P 500)', name: 'SPDR S&P 500 ETF Trust' },
+  { symbol: 'VT', label: 'VT (Total World)', name: 'Vanguard Total World Stock ETF' },
+  { symbol: 'QQQ', label: 'QQQ (Nasdaq 100)', name: 'Invesco QQQ Trust' },
+  { symbol: 'VOO', label: 'VOO (Vanguard 500)', name: 'Vanguard S&P 500 ETF' },
+  { symbol: 'VTI', label: 'VTI (Total US)', name: 'Vanguard Total Stock Market ETF' },
+  { symbol: 'MBH.SI', label: 'MBH.SI (SG Bond)', name: 'Nikko AM SGD Investment Grade Bond ETF' },
+  { symbol: 'GLD', label: 'GLD (Gold)', name: 'SPDR Gold Shares' },
+  { symbol: 'DIA', label: 'DIA (Dow 30)', name: 'SPDR Dow Jones Industrial Average' },
+  { symbol: 'IWM', label: 'IWM (Russell 2000)', name: 'iShares Russell 2000 ETF' },
+];
+
+const PRESET_COMPARISONS = [
+  { label: 'SG & Global', tickers: ['ES3.SI', 'SPY', 'VT', 'QQQ'] },
+  { label: 'US Leaders', tickers: ['SPY', 'QQQ', 'VOO', 'VTI'] },
+  { label: 'Singapore Horizons', tickers: ['ES3.SI', 'MBH.SI', 'SPY', 'VT'] },
+  { label: 'Growth vs World', tickers: ['QQQ', 'SPY', 'VT', 'IWM'] },
+];
+
 const TICKER_COLORS: Record<string, string> = {
   'ES3.SI': '#38bdf8', // Light sky blue
   'SPY': '#3b82f6',    // Blue
@@ -43,6 +64,10 @@ const TICKER_COLORS: Record<string, string> = {
   'QQQ': '#a855f7',    // Purple
   'VTI': '#f59e0b',    // Amber
   'VOO': '#06b6d4',    // Cyan
+  'MBH.SI': '#ec4899', // Pink
+  'GLD': '#eab308',    // Gold
+  'DIA': '#6366f1',    // Indigo
+  'IWM': '#14b8a6',    // Teal
 };
 
 export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> = ({
@@ -57,7 +82,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
   const [newTickerInput, setNewTickerInput] = useState('');
   const [tickerDataMap, setTickerDataMap] = useState<Record<string, TickerAnalytics>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [useDynamicScale, setUseDynamicScale] = useState(true);
   const [chartViewMode, setChartViewMode] = useState<'forward_projections' | 'historical_indexed'>('forward_projections');
 
@@ -70,7 +95,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
 
     async function loadAllTickers() {
       setIsLoading(true);
-      setErrorNotice(null);
+      setNotice(null);
       const newMap: Record<string, TickerAnalytics> = { ...tickerDataMap };
 
       for (const t of selectedTickers) {
@@ -171,7 +196,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
             newMap[t] = {
               ...newMap[t],
               isLoading: false,
-              error: err?.message || 'Failed to load',
+              error: err?.message || 'Failed to load data',
             };
           }
         }
@@ -190,30 +215,69 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
     };
   }, [selectedTickers, years, initialAmount, monthlyContribution]);
 
-  const handleAddTicker = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = newTickerInput.trim().toUpperCase();
+  // Add or swap a ticker
+  const handleAddOrSwapTicker = (tickerToAdd: string) => {
+    const clean = tickerToAdd.trim().toUpperCase();
     if (!clean) return;
+
     if (selectedTickers.includes(clean)) {
-      setNewTickerInput('');
+      onSelectPrimaryTicker(clean);
+      setNotice(`${clean} is already in the comparison set. Set as active focus.`);
+      setTimeout(() => setNotice(null), 3000);
       return;
     }
+
     if (selectedTickers.length >= 4) {
-      setErrorNotice('You can compare up to 4 tickers simultaneously.');
-      return;
+      // Replace the last non-primary ticker
+      let replacedIndex = 3;
+      for (let i = selectedTickers.length - 1; i >= 0; i--) {
+        if (selectedTickers[i].toUpperCase() !== activePrimaryTicker.toUpperCase()) {
+          replacedIndex = i;
+          break;
+        }
+      }
+      const replacedTicker = selectedTickers[replacedIndex];
+      const updated = [...selectedTickers];
+      updated[replacedIndex] = clean;
+      setSelectedTickers(updated);
+      setNotice(`Replaced ${replacedTicker} with ${clean} in 4-ticker comparison set.`);
+      setTimeout(() => setNotice(null), 3500);
+    } else {
+      setSelectedTickers([...selectedTickers, clean]);
+      setNotice(`Added ${clean} to comparison set.`);
+      setTimeout(() => setNotice(null), 3000);
     }
-    setSelectedTickers([...selectedTickers, clean]);
-    setNewTickerInput('');
-    setErrorNotice(null);
+  };
+
+  const handleCustomSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTickerInput.trim()) {
+      handleAddOrSwapTicker(newTickerInput);
+      setNewTickerInput('');
+    }
   };
 
   const handleRemoveTicker = (tickerToRemove: string) => {
     if (selectedTickers.length <= 1) {
-      setErrorNotice('At least one ticker must remain active.');
+      setNotice('At least one ticker must remain active in the comparison.');
+      setTimeout(() => setNotice(null), 3000);
       return;
     }
-    setSelectedTickers(selectedTickers.filter((t) => t !== tickerToRemove));
-    setErrorNotice(null);
+    const updated = selectedTickers.filter((t) => t !== tickerToRemove);
+    setSelectedTickers(updated);
+    if (tickerToRemove.toUpperCase() === activePrimaryTicker.toUpperCase() && updated.length > 0) {
+      onSelectPrimaryTicker(updated[0]);
+    }
+    setNotice(null);
+  };
+
+  const handleApplyPreset = (presetTickers: string[]) => {
+    setSelectedTickers(presetTickers);
+    if (!presetTickers.includes(activePrimaryTicker)) {
+      onSelectPrimaryTicker(presetTickers[0]);
+    }
+    setNotice(`Applied preset: ${presetTickers.join(', ')}`);
+    setTimeout(() => setNotice(null), 3000);
   };
 
   // 1. Dataset for 10-Year Forward Wealth Projections across all selected tickers
@@ -426,62 +490,119 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
           </div>
         </div>
 
-        {/* Selected Ticker Chips & Search */}
-        <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-slate-800/80">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">
-            Comparing ({selectedTickers.length}/4):
-          </span>
-          {selectedTickers.map((t) => {
-            const color = TICKER_COLORS[t] || '#60a5fa';
-            const isPrimary = t.toUpperCase() === activePrimaryTicker.toUpperCase();
-            return (
-              <span
-                key={t}
-                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-md border transition-colors ${
-                  isPrimary
-                    ? 'bg-blue-950 border-blue-600 text-white shadow-sm shadow-blue-500/20'
-                    : 'bg-slate-950 border-slate-800 text-slate-200'
-                }`}
-              >
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                <span>{t}</span>
-                {isPrimary && (
-                  <span className="text-[10px] text-blue-400 font-sans">Active Focus</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTicker(t)}
-                  className="text-slate-500 hover:text-slate-300 ml-0.5"
-                  title={`Remove ${t}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            );
-          })}
+        {/* Ticker Management Deck */}
+        <div className="space-y-3 pb-4 border-b border-slate-800/80">
+          {/* Active Comparison Chips & Direct Ticker Search */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">
+              Active Tickers ({selectedTickers.length}/4):
+            </span>
 
-          {selectedTickers.length < 4 && (
-            <form onSubmit={handleAddTicker} className="flex items-center">
-              <input
-                type="text"
-                placeholder="+ Add ticker..."
-                value={newTickerInput}
-                onChange={(e) => setNewTickerInput(e.target.value.toUpperCase())}
-                className="w-28 h-7 px-2 text-xs font-mono text-slate-200 bg-slate-950 border border-slate-800 rounded-md focus:outline-none focus:border-blue-500"
-              />
+            {selectedTickers.map((t) => {
+              const color = TICKER_COLORS[t] || '#60a5fa';
+              const isPrimary = t.toUpperCase() === activePrimaryTicker.toUpperCase();
+              return (
+                <span
+                  key={t}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-md border transition-all ${
+                    isPrimary
+                      ? 'bg-blue-950 border-blue-600 text-white shadow-sm shadow-blue-500/30 ring-1 ring-blue-500/50'
+                      : 'bg-slate-950 border-slate-800 text-slate-200 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                  <button
+                    type="button"
+                    onClick={() => onSelectPrimaryTicker(t)}
+                    title={`Click to set ${t} as primary focus`}
+                    className="hover:underline font-bold"
+                  >
+                    {t}
+                  </button>
+                  {isPrimary && (
+                    <span className="text-[10px] text-blue-400 font-sans">Focus</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTicker(t)}
+                    className="text-slate-500 hover:text-rose-400 ml-0.5 transition-colors"
+                    title={`Remove ${t} from comparison`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              );
+            })}
+
+            {/* Always-accessible custom search input */}
+            <form onSubmit={handleCustomSubmit} className="flex items-center ml-auto">
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  placeholder="Add or swap ticker..."
+                  value={newTickerInput}
+                  onChange={(e) => setNewTickerInput(e.target.value.toUpperCase())}
+                  className="w-36 sm:w-44 h-7 pl-6 pr-2 text-xs font-mono text-slate-200 bg-slate-950 border border-slate-800 rounded-md focus:outline-none focus:border-blue-500"
+                />
+                <Search className="absolute left-1.5 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+              </div>
               <button
                 type="submit"
-                className="ml-1 h-7 px-2 text-xs font-medium text-blue-400 bg-slate-950 border border-slate-800 rounded-md hover:bg-blue-900/40"
+                className="ml-1 h-7 px-2.5 text-xs font-medium text-blue-400 bg-slate-950 border border-slate-800 rounded-md hover:bg-blue-900/40 hover:text-white transition-colors"
               >
                 <Plus className="h-3 w-3" />
               </button>
             </form>
-          )}
+          </div>
+
+          {/* Quick Preset Portfolios & Popular Ticker Pills */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs">
+            {/* Quick-add popular pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-slate-400 font-medium">Quick Pick:</span>
+              {POPULAR_TICKER_SUGGESTIONS.slice(0, 7).map((item) => {
+                const isSelected = selectedTickers.includes(item.symbol);
+                return (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    onClick={() => handleAddOrSwapTicker(item.symbol)}
+                    className={`px-2 py-0.5 text-[11px] font-mono rounded border transition-all ${
+                      isSelected
+                        ? 'bg-blue-950/70 border-blue-800 text-blue-300 font-semibold'
+                        : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                    title={item.name}
+                  >
+                    {item.symbol}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Presets */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[11px] text-slate-400 font-medium">Presets:</span>
+              {PRESET_COMPARISONS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => handleApplyPreset(p.tickers)}
+                  className="px-2 py-0.5 text-[10px] font-medium rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-blue-400 hover:border-slate-700 transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {errorNotice && (
-          <div className="mt-3 text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-3 py-1.5">
-            {errorNotice}
+        {notice && (
+          <div className="mt-2 text-xs text-blue-300 bg-blue-950/40 border border-blue-800/50 rounded px-3 py-1.5 flex items-center justify-between">
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} className="text-blue-400 hover:text-blue-200">
+              <X className="h-3 w-3" />
+            </button>
           </div>
         )}
 
@@ -588,7 +709,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
               <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
                 <span>Multi-Ticker 10-Year Forward Projections Comparison</span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 border border-blue-800 text-blue-300">
-                  {selectedTickers.length} Tickers
+                  {selectedTickers.length} Selected
                 </span>
               </h3>
             </div>
@@ -616,7 +737,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
                 <th className="py-3 px-3 text-right text-emerald-400">10Y Bull (+20%)</th>
                 <th className="py-3 px-4 text-right">Projected Net Gain</th>
                 <th className="py-3 px-3 text-right">MoIC</th>
-                <th className="py-3 px-3 text-center">Action</th>
+                <th className="py-3 px-3 text-center">Manage</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70 text-xs font-mono tabular-nums">
@@ -736,20 +857,36 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
                       {baseScen ? `${baseScen.multiple.toFixed(2)}x` : '—'}
                     </td>
 
-                    {/* Set as Primary Focus Button */}
+                    {/* Actions: Focus & Remove */}
                     <td className="py-3.5 px-3 text-center">
-                      {!isPrimary ? (
-                        <button
-                          type="button"
-                          onClick={() => onSelectPrimaryTicker(t)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-sans font-medium text-blue-400 hover:text-white bg-blue-950/60 hover:bg-blue-600 border border-blue-800/60 rounded transition-all whitespace-nowrap"
-                        >
-                          <span>Focus</span>
-                          <ArrowRight className="h-3 w-3" />
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-slate-500 font-sans">Active</span>
-                      )}
+                      <div className="flex items-center justify-center gap-1.5">
+                        {!isPrimary ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectPrimaryTicker(t)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-sans font-medium text-blue-400 hover:text-white bg-blue-950/60 hover:bg-blue-600 border border-blue-800/60 rounded transition-all whitespace-nowrap"
+                            title={`Set ${t} as the primary dashboard focus`}
+                          >
+                            <span>Focus</span>
+                            <ArrowRight className="h-3 w-3" />
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-blue-400 font-semibold px-2 py-1 bg-blue-950/60 rounded border border-blue-800/40">
+                            Active
+                          </span>
+                        )}
+
+                        {selectedTickers.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTicker(t)}
+                            className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                            title={`Remove ${t}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

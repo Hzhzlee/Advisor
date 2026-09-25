@@ -206,7 +206,7 @@ export default function App() {
               ETF Horizon Analytics
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Historical performance analytics and 10-year forward projection model. Executed strictly through stateless Model Context Protocol (MCP) tools.
+              Historical performance analytics and 10-year forward projection model.
             </p>
           </div>
 
