@@ -9,10 +9,9 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ReferenceLine,
 } from 'recharts';
 import { MetricResults, ScenarioResult, MonteCarloResult, PricePoint } from '../types';
-import { Eye, Layers, Info } from 'lucide-react';
+import { Layers, Info, Maximize2, Minimize2 } from 'lucide-react';
 
 interface ProjectionChartProps {
   ticker: string;
@@ -37,6 +36,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
   years,
 }) => {
   const [showMonteCarloBand, setShowMonteCarloBand] = useState(true);
+  const [useDynamicScale, setUseDynamicScale] = useState(true);
   const sym = currency === 'SGD' ? 'S$' : '$';
 
   // Build combined 1-point-per-year dataset
@@ -49,23 +49,21 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
     const currentYear = new Date(lastPricePoint.date).getFullYear() || 2025;
 
     // 1. Sample historical prices: 1 point per year
-    // Group prices by year, pick the closing price closest to year-end (or December/latest available)
-    const yearlyHistoricalMap = new Map<number, number>();
+    const yearlyHistoricalMap = new Map<number, { close: number; date: string }>();
     for (const p of sortedPrices) {
       const yr = new Date(p.date).getFullYear();
-      yearlyHistoricalMap.set(yr, p.close);
+      yearlyHistoricalMap.set(yr, { close: p.close, date: p.date });
     }
 
     const histYears = Array.from(yearlyHistoricalMap.keys()).sort((a, b) => a - b);
-    // Take up to `years` historical points
     const sampledHistYears = histYears.slice(-years);
 
     const rows: any[] = [];
 
     // Historical Points (solid line, indexed to initial capital at Year 0)
     for (const y of sampledHistYears) {
-      const priceAtY = yearlyHistoricalMap.get(y)!;
-      // Scaled so that at currentYear, scaled value = initialAmount
+      const item = yearlyHistoricalMap.get(y)!;
+      const priceAtY = item.close;
       const scaledVal = Math.round((priceAtY / lastPrice) * initialAmount);
       const isCurrent = y === currentYear;
 
@@ -74,13 +72,13 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
         yearNumber: y,
         isFuture: false,
         historical: scaledVal,
+        rawClosePrice: priceAtY,
       };
 
       // Connect seamless anchor point at Current Year
       if (isCurrent) {
         row.label = `${y} (Now)`;
         row.historical = initialAmount;
-        // Seed scenario projections at Year 0
         scenarios.forEach((scen) => {
           row[scen.id] = initialAmount;
         });
@@ -100,10 +98,9 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
         label: `${futureCalendarYear}`,
         yearNumber: futureCalendarYear,
         isFuture: true,
-        historical: null, // Historical stops at Year 0
+        historical: null,
       };
 
-      // Map scenario trajectories
       scenarios.forEach((scen) => {
         const point = scen.trajectory.find((t) => t.year === fYear);
         if (point) {
@@ -112,11 +109,9 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
         }
       });
 
-      // Map Monte Carlo percentiles
       if (monteCarlo) {
         const mcPoint = monteCarlo.trajectories.find((t) => t.year === fYear);
         if (mcPoint) {
-          // Recharts area range tuple [min, max]
           row.mcRange = [mcPoint.p10, mcPoint.p90];
           row.mcP10 = mcPoint.p10;
           row.mcP50 = mcPoint.p50;
@@ -130,7 +125,46 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
     return rows;
   }, [prices, metrics, scenarios, monteCarlo, initialAmount, years]);
 
-  // Scenario configuration for display
+  // Dynamically calculate tight Y-axis domain based on actual price & projection range
+  const dynamicYDomain = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [0, 10000];
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+
+    chartData.forEach((row) => {
+      if (typeof row.historical === 'number') {
+        minVal = Math.min(minVal, row.historical);
+        maxVal = Math.max(maxVal, row.historical);
+      }
+      ['scen_m20', 'scen_m10', 'scen_0', 'scen_p10', 'scen_p20'].forEach((key) => {
+        if (typeof row[key] === 'number') {
+          minVal = Math.min(minVal, row[key]);
+          maxVal = Math.max(maxVal, row[key]);
+        }
+      });
+      if (showMonteCarloBand && Array.isArray(row.mcRange)) {
+        minVal = Math.min(minVal, row.mcRange[0]);
+        maxVal = Math.max(maxVal, row.mcRange[1]);
+      }
+    });
+
+    if (!isFinite(minVal) || !isFinite(maxVal)) return [0, 10000];
+
+    if (!useDynamicScale) {
+      // Baseline 0 mode
+      const paddedMax = Math.ceil((maxVal * 1.1) / 5000) * 5000;
+      return [0, paddedMax];
+    }
+
+    // Dynamic zoom based on data range
+    const span = maxVal - minVal;
+    const padding = Math.max(span * 0.08, 1000);
+    const paddedMin = Math.max(0, Math.floor((minVal - padding) / 1000) * 1000);
+    const paddedMax = Math.ceil((maxVal + padding) / 1000) * 1000;
+
+    return [paddedMin, Math.max(paddedMax, paddedMin + 1000)];
+  }, [chartData, showMonteCarloBand, useDynamicScale]);
+
   const scenarioConfig = [
     { id: 'scen_m20', label: 'Severe Bear (-20% rel)', color: '#f43f5e' },
     { id: 'scen_m10', label: 'Conservative (-10% rel)', color: '#fb923c' },
@@ -139,7 +173,6 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
     { id: 'scen_p20', label: 'Strong Bull (+20% rel)', color: '#10b981' },
   ];
 
-  // Custom tooltip
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload || !payload.length) return null;
 
@@ -150,23 +183,33 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
       <div className="rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[240px]">
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
           <span className="font-semibold text-slate-200">
-            Horizon Snapshot: <span className="font-mono text-blue-400">{label}</span>
+            Year: <span className="font-mono text-blue-400">{label}</span>
           </span>
           <span className="text-[10px] font-mono text-slate-400">
-            {dataItem.isFuture ? 'Forward Projection' : 'Historical Anchor'}
+            {dataItem.isFuture ? '10Y Forward' : 'Historical Trajectory'}
           </span>
         </div>
 
         <div className="space-y-1.5 font-mono">
           {dataItem.historical !== null && dataItem.historical !== undefined && (
-            <div className="flex items-center justify-between text-slate-200">
-              <span className="flex items-center gap-1.5 text-blue-400">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
-                Historical Price (Indexed):
-              </span>
-              <span className="font-bold tabular-nums">
-                {sym}{dataItem.historical.toLocaleString()}
-              </span>
+            <div className="flex flex-col gap-0.5 pb-1 border-b border-slate-800/80">
+              <div className="flex items-center justify-between text-slate-200">
+                <span className="flex items-center gap-1.5 text-blue-400">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" />
+                  Portfolio Value:
+                </span>
+                <span className="font-bold tabular-nums">
+                  {sym}{dataItem.historical.toLocaleString()}
+                </span>
+              </div>
+              {dataItem.rawClosePrice && (
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>ETF Share Price:</span>
+                  <span className="tabular-nums font-semibold text-slate-300">
+                    {sym}{dataItem.rawClosePrice.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -189,7 +232,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               })}
 
               {dataItem.mcP10 !== undefined && (
-                <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
+                <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 space-y-0.5">
                   <div className="flex justify-between">
                     <span>Monte Carlo P90:</span>
                     <span className="text-emerald-400 font-semibold">{sym}{dataItem.mcP90.toLocaleString()}</span>
@@ -221,12 +264,28 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Solid historical wealth trajectory flowing into 5 deterministic scenario curves with shaded Monte Carlo band (10th–90th percentile).
+            Solid historical line flowing into five scenario projections (dashed) with Monte Carlo 10th-90th percentile band.
           </p>
         </div>
 
-        {/* Action controls */}
+        {/* Dynamic Scale & MC Band Controls */}
         <div className="flex items-center gap-2">
+          {/* Dynamic Range Button */}
+          <button
+            type="button"
+            onClick={() => setUseDynamicScale(!useDynamicScale)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+              useDynamicScale
+                ? 'bg-blue-950/80 border-blue-700 text-blue-300'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+            title="Toggle dynamic scale range based on actual prices vs fixed 0-baseline"
+          >
+            {useDynamicScale ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            <span>{useDynamicScale ? 'Dynamic Price Range (Active)' : 'Fit from S$0'}</span>
+          </button>
+
+          {/* MC Band Toggle */}
           <button
             type="button"
             onClick={() => setShowMonteCarloBand(!showMonteCarloBand)}
@@ -276,7 +335,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
                   if (val >= 1000) return `${sym}${(val / 1000).toFixed(0)}k`;
                   return `${sym}${val}`;
                 }}
-                domain={['auto', 'auto']}
+                domain={dynamicYDomain}
                 tickMargin={10}
               />
 
@@ -377,7 +436,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
         <div className="flex items-center gap-1.5">
           <Info className="h-3.5 w-3.5 text-blue-400 shrink-0" />
           <span>
-            Historical trajectory normalized to {sym}{initialAmount.toLocaleString()} at Year 0. Forward projections compound monthly with contributions.
+            Dynamic range adjusts vertical scaling to the active price data. Range: {sym}{dynamicYDomain[0].toLocaleString()} – {sym}{dynamicYDomain[1].toLocaleString()}.
           </span>
         </div>
         <div className="font-mono text-slate-400">

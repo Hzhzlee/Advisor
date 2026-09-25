@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -11,78 +11,173 @@ import {
 } from 'recharts';
 import { mcpClient } from '../services/mcpClient';
 import { BENCHMARKS } from '../data/benchmarks';
-import { PricePoint } from '../types';
-import { Plus, X, BarChart3, Info } from 'lucide-react';
+import { PricePoint, MetricResults, ScenarioResult } from '../types';
+import { Plus, X, ArrowUpRight, TrendingUp, ShieldAlert, Award, ArrowRight, Minimize2, Maximize2, Layers } from 'lucide-react';
 
 interface BenchmarkComparisonChartProps {
   years: number;
+  initialAmount: number;
+  monthlyContribution: number;
+  currency: 'SGD' | 'USD';
+  activePrimaryTicker: string;
+  onSelectPrimaryTicker: (ticker: string) => void;
 }
 
-interface TickerSeriesData {
+interface TickerAnalytics {
   ticker: string;
   name: string;
-  prices: PricePoint[];
+  currency: string;
   color: string;
+  prices: PricePoint[];
+  metrics: MetricResults | null;
+  scenarios: ScenarioResult[];
+  isLoading: boolean;
+  error?: string;
 }
 
-const DEFAULT_COMPARISON_TICKERS = ['ES3.SI', 'SPY', 'VT'];
+const DEFAULT_COMPARISON_TICKERS = ['ES3.SI', 'SPY', 'VT', 'QQQ'];
 const TICKER_COLORS: Record<string, string> = {
   'ES3.SI': '#38bdf8', // Light sky blue
   'SPY': '#3b82f6',    // Blue
   'VT': '#10b981',     // Emerald
   'QQQ': '#a855f7',    // Purple
   'VTI': '#f59e0b',    // Amber
+  'VOO': '#06b6d4',    // Cyan
 };
 
-export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> = ({ years }) => {
+export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> = ({
+  years,
+  initialAmount,
+  monthlyContribution,
+  currency,
+  activePrimaryTicker,
+  onSelectPrimaryTicker,
+}) => {
   const [selectedTickers, setSelectedTickers] = useState<string[]>(DEFAULT_COMPARISON_TICKERS);
   const [newTickerInput, setNewTickerInput] = useState('');
-  const [seriesList, setSeriesList] = useState<TickerSeriesData[]>([]);
+  const [tickerDataMap, setTickerDataMap] = useState<Record<string, TickerAnalytics>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [useDynamicScale, setUseDynamicScale] = useState(true);
 
-  // Fetch prices for selected tickers via MCP
+  const sym = currency === 'SGD' ? 'S$' : '$';
+  const totalContributed = initialAmount + years * 12 * monthlyContribution;
+
+  // Fetch prices, compute metrics, and run scenario projections for each selected ticker
   useEffect(() => {
     let isCancelled = false;
 
     async function loadAllTickers() {
       setIsLoading(true);
       setErrorNotice(null);
-      const loaded: TickerSeriesData[] = [];
+      const newMap: Record<string, TickerAnalytics> = { ...tickerDataMap };
 
       for (const t of selectedTickers) {
+        if (newMap[t] && newMap[t].prices.length > 0 && !newMap[t].isLoading) {
+          // Re-compute scenarios if capital/contribution changed
+          try {
+            if (newMap[t].metrics) {
+              const scenRes = await mcpClient.projectScenarios(
+                initialAmount,
+                newMap[t].metrics!.cagr,
+                10,
+                monthlyContribution
+              );
+              newMap[t] = { ...newMap[t], scenarios: scenRes };
+            }
+          } catch {
+            // keep existing
+          }
+          continue;
+        }
+
+        newMap[t] = {
+          ticker: t,
+          name: BENCHMARKS[t]?.name || t,
+          currency: t.endsWith('.SI') ? 'SGD' : 'USD',
+          color: TICKER_COLORS[t] || '#60a5fa',
+          prices: [],
+          metrics: null,
+          scenarios: [],
+          isLoading: true,
+        };
+
         try {
-          // 1. Attempt MCP tool call
-          const result = await mcpClient.getPriceHistory(t, years);
-          if (result && Array.isArray(result.prices) && result.prices.length > 0) {
-            loaded.push({
+          // 1. Fetch price history via MCP
+          const historyRes = await mcpClient.getPriceHistory(t, years);
+          const prices = historyRes?.prices || [];
+          const tickerCurrency = historyRes?.currency || (t.endsWith('.SI') ? 'SGD' : 'USD');
+
+          // 2. Compute metrics via MCP
+          const metricsRes = await mcpClient.computeMetrics(prices);
+
+          // 3. Project 10-year scenarios via MCP
+          const scenariosRes = await mcpClient.projectScenarios(
+            initialAmount,
+            metricsRes.cagr,
+            10,
+            monthlyContribution
+          );
+
+          if (!isCancelled) {
+            newMap[t] = {
               ticker: t,
               name: BENCHMARKS[t]?.name || t,
-              prices: result.prices,
+              currency: tickerCurrency,
               color: TICKER_COLORS[t] || '#60a5fa',
-            });
-            continue;
+              prices,
+              metrics: metricsRes,
+              scenarios: scenariosRes,
+              isLoading: false,
+            };
           }
-        } catch {
-          // If MCP get_price_history failed (e.g. no Twelve Data key), fallback to verified benchmarks if available
+        } catch (err: any) {
+          // Fallback to verified exchange benchmark if available
           if (BENCHMARKS[t]) {
             const { parseCSVToPrices } = await import('../data/benchmarks');
             const benchmarkPrices = parseCSVToPrices(BENCHMARKS[t].csvData);
             const targetMonths = years * 12;
             const sliced = benchmarkPrices.slice(-targetMonths);
-            loaded.push({
-              ticker: t,
-              name: BENCHMARKS[t].name,
-              prices: sliced,
-              color: TICKER_COLORS[t] || '#60a5fa',
-            });
-            continue;
+
+            try {
+              const metricsRes = await mcpClient.computeMetrics(sliced);
+              const scenariosRes = await mcpClient.projectScenarios(
+                initialAmount,
+                metricsRes.cagr,
+                10,
+                monthlyContribution
+              );
+
+              if (!isCancelled) {
+                newMap[t] = {
+                  ticker: t,
+                  name: BENCHMARKS[t].name,
+                  currency: BENCHMARKS[t].currency,
+                  color: TICKER_COLORS[t] || '#60a5fa',
+                  prices: sliced,
+                  metrics: metricsRes,
+                  scenarios: scenariosRes,
+                  isLoading: false,
+                };
+              }
+              continue;
+            } catch {
+              // ignore
+            }
+          }
+
+          if (!isCancelled) {
+            newMap[t] = {
+              ...newMap[t],
+              isLoading: false,
+              error: err?.message || 'Failed to load',
+            };
           }
         }
       }
 
       if (!isCancelled) {
-        setSeriesList(loaded);
+        setTickerDataMap({ ...newMap });
         setIsLoading(false);
       }
     }
@@ -92,7 +187,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
     return () => {
       isCancelled = true;
     };
-  }, [selectedTickers, years]);
+  }, [selectedTickers, years, initialAmount, monthlyContribution]);
 
   const handleAddTicker = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,12 +197,13 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
       setNewTickerInput('');
       return;
     }
-    if (selectedTickers.length >= 3) {
-      setErrorNotice('You can compare up to 3 tickers simultaneously.');
+    if (selectedTickers.length >= 4) {
+      setErrorNotice('You can compare up to 4 tickers simultaneously.');
       return;
     }
     setSelectedTickers([...selectedTickers, clean]);
     setNewTickerInput('');
+    setErrorNotice(null);
   };
 
   const handleRemoveTicker = (tickerToRemove: string) => {
@@ -120,16 +216,18 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
   };
 
   // Re-index all series to 100 at the earliest shared starting point
-  const { chartData, totalReturns } = React.useMemo(() => {
-    if (seriesList.length === 0) return { chartData: [], totalReturns: {} };
+  const { chartData, totalReturns } = useMemo(() => {
+    const activeSeries = selectedTickers
+      .map((t) => tickerDataMap[t])
+      .filter((item): item is TickerAnalytics => Boolean(item && item.prices.length > 0));
 
-    // Find all distinct dates across all series
+    if (activeSeries.length === 0) return { chartData: [], totalReturns: {} };
+
     const dateSet = new Set<string>();
-    seriesList.forEach((s) => s.prices.forEach((p) => dateSet.add(p.date)));
+    activeSeries.forEach((s) => s.prices.forEach((p) => dateSet.add(p.date)));
     const sortedDates = Array.from(dateSet).sort();
 
-    // Map prices by date for fast lookup
-    const seriesMaps = seriesList.map((s) => ({
+    const seriesMaps = activeSeries.map((s) => ({
       ticker: s.ticker,
       name: s.name,
       map: new Map(s.prices.map((p) => [p.date, p.close])),
@@ -137,23 +235,20 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
       lastPrice: s.prices[s.prices.length - 1]?.close || 1,
     }));
 
-    // Calculate total return for each ticker
     const returns: Record<string, number> = {};
     seriesMaps.forEach((s) => {
       returns[s.ticker] = (s.lastPrice - s.firstPrice) / s.firstPrice;
     });
 
-    // Sample roughly 1 point per quarter or 1 per month for clean rendering
     const rows = sortedDates.map((d) => {
       const row: any = {
         date: d,
-        formattedDate: d.slice(0, 7), // YYYY-MM
+        formattedDate: d.slice(0, 7),
       };
 
       seriesMaps.forEach((s) => {
         const p = s.map.get(d);
         if (p !== undefined) {
-          // Indexed to 100 at each ticker's first available point
           row[s.ticker] = Math.round((p / s.firstPrice) * 10000) / 100;
         }
       });
@@ -162,185 +257,426 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
     });
 
     return { chartData: rows, totalReturns: returns };
-  }, [seriesList]);
+  }, [selectedTickers, tickerDataMap]);
+
+  // Dynamically compute tight Y-axis domain based on actual min/max index values
+  const dynamicYDomain = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [80, 250];
+
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+
+    chartData.forEach((row) => {
+      selectedTickers.forEach((t) => {
+        const val = row[t];
+        if (typeof val === 'number') {
+          minVal = Math.min(minVal, val);
+          maxVal = Math.max(maxVal, val);
+        }
+      });
+    });
+
+    if (!isFinite(minVal) || !isFinite(maxVal)) return [80, 250];
+
+    if (!useDynamicScale) {
+      return [0, Math.ceil(maxVal * 1.15)];
+    }
+
+    // Dynamic scale with 8% padding
+    const span = maxVal - minVal;
+    const padding = Math.max(span * 0.08, 5);
+    const paddedMin = Math.max(0, Math.floor(minVal - padding));
+    const paddedMax = Math.ceil(maxVal + padding);
+
+    return [paddedMin, paddedMax];
+  }, [chartData, selectedTickers, useDynamicScale]);
+
+  // Find standout leaders among compared tickers
+  const topCagrTicker = useMemo(() => {
+    let bestTicker = '';
+    let maxCagr = -Infinity;
+    selectedTickers.forEach((t) => {
+      const m = tickerDataMap[t]?.metrics;
+      if (m && m.cagr > maxCagr) {
+        maxCagr = m.cagr;
+        bestTicker = t;
+      }
+    });
+    return bestTicker;
+  }, [selectedTickers, tickerDataMap]);
+
+  const lowestVolTicker = useMemo(() => {
+    let bestTicker = '';
+    let minVol = Infinity;
+    selectedTickers.forEach((t) => {
+      const m = tickerDataMap[t]?.metrics;
+      if (m && m.annualized_volatility < minVol) {
+        minVol = m.annualized_volatility;
+        bestTicker = t;
+      }
+    });
+    return bestTicker;
+  }, [selectedTickers, tickerDataMap]);
+
+  const formatCurrency = (val: number) => `${sym}${Math.round(val).toLocaleString()}`;
+  const formatPct = (val: number) => `${(val * 100).toFixed(2)}%`;
 
   return (
-    <section id="comparative" className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-sm">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
-              Chart 2: Comparative Horizon (Indexed to 100)
-            </h2>
+    <section id="comparative" className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-sm space-y-6">
+      {/* Chart 2 Header & Ticker Chips */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                Chart 2: Comparative Horizon (Indexed to 100)
+              </h2>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Compare 3 to 4 ETF benchmarks side-by-side with dynamic price scaling.
+            </p>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Normalized historical benchmark comparison indexed to base 100 at the start of the lookback window.
-          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Dynamic Scale Toggle */}
+            <button
+              type="button"
+              onClick={() => setUseDynamicScale(!useDynamicScale)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded-md border transition-colors ${
+                useDynamicScale
+                  ? 'bg-blue-950/80 border-blue-700 text-blue-300'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Toggle dynamic vertical scaling based on actual price values"
+            >
+              {useDynamicScale ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              <span>{useDynamicScale ? 'Dynamic Scale (Active)' : 'Fit from 0'}</span>
+            </button>
+
+            {/* Selected Ticker Chips */}
+            {selectedTickers.map((t) => {
+              const color = TICKER_COLORS[t] || '#60a5fa';
+              const isPrimary = t.toUpperCase() === activePrimaryTicker.toUpperCase();
+              return (
+                <span
+                  key={t}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-md border transition-colors ${
+                    isPrimary
+                      ? 'bg-blue-950 border-blue-600 text-white shadow-sm shadow-blue-500/20'
+                      : 'bg-slate-950 border-slate-800 text-slate-200'
+                  }`}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+                  <span>{t}</span>
+                  {isPrimary && (
+                    <span className="text-[10px] text-blue-400 font-sans">Primary</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTicker(t)}
+                    className="text-slate-500 hover:text-slate-300 ml-0.5"
+                    title={`Remove ${t}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              );
+            })}
+
+            {selectedTickers.length < 4 && (
+              <form onSubmit={handleAddTicker} className="flex items-center">
+                <input
+                  type="text"
+                  placeholder="+ Add ticker..."
+                  value={newTickerInput}
+                  onChange={(e) => setNewTickerInput(e.target.value.toUpperCase())}
+                  className="w-28 h-7 px-2 text-xs font-mono text-slate-200 bg-slate-950 border border-slate-800 rounded-md focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  type="submit"
+                  className="ml-1 h-7 px-2 text-xs font-medium text-blue-400 bg-slate-950 border border-slate-800 rounded-md hover:bg-blue-900/40"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </form>
+            )}
+          </div>
         </div>
 
-        {/* Ticker Selector Chips & Add Input */}
-        <div className="flex flex-wrap items-center gap-2">
-          {selectedTickers.map((t) => {
-            const color = TICKER_COLORS[t] || '#60a5fa';
-            return (
-              <span
-                key={t}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-md bg-slate-950 border border-slate-800 text-slate-200"
-              >
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                <span>{t}</span>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTicker(t)}
-                  className="text-slate-500 hover:text-slate-300 ml-1"
-                  title={`Remove ${t}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            );
-          })}
+        {errorNotice && (
+          <div className="mb-3 text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-3 py-1.5">
+            {errorNotice}
+          </div>
+        )}
 
-          {selectedTickers.length < 3 && (
-            <form onSubmit={handleAddTicker} className="flex items-center">
-              <input
-                type="text"
-                placeholder="+ Add (e.g. QQQ)"
-                value={newTickerInput}
-                onChange={(e) => setNewTickerInput(e.target.value.toUpperCase())}
-                className="w-28 h-7 px-2 text-xs font-mono text-slate-200 bg-slate-950 border border-slate-800 rounded-md focus:outline-none focus:border-blue-500"
-              />
-              <button
-                type="submit"
-                className="ml-1 h-7 px-2 text-xs font-medium text-blue-400 bg-slate-950 border border-slate-800 rounded-md hover:bg-blue-900/40"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </form>
+        {/* Chart Canvas with Dynamic Y-Domain */}
+        <div className="h-[320px] sm:h-[360px] w-full">
+          {isLoading && chartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-slate-500 text-sm font-mono">
+              Loading price series for selected benchmarks...
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-slate-500 text-sm font-mono">
+              No price records available.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 15, right: 25, left: 10, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+
+                <XAxis
+                  dataKey="formattedDate"
+                  stroke="#64748b"
+                  tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                  tickMargin={8}
+                  minTickGap={40}
+                />
+
+                <YAxis
+                  stroke="#64748b"
+                  tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                  domain={dynamicYDomain}
+                  tickMargin={8}
+                  tickFormatter={(v) => `${v}`}
+                />
+
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    return (
+                      <div className="rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[200px]">
+                        <div className="font-mono text-slate-400 pb-1.5 mb-1.5 border-b border-slate-800">
+                          Date: <span className="text-white font-semibold">{label}</span>
+                        </div>
+                        <div className="space-y-1 font-mono">
+                          {payload.map((item: any) => {
+                            const val = item.value;
+                            const growth = val ? (val - 100).toFixed(1) : '0';
+                            return (
+                              <div key={item.dataKey} className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5" style={{ color: item.color }}>
+                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                                  {item.name}:
+                                </span>
+                                <span className="font-semibold tabular-nums text-white">
+                                  {val}{' '}
+                                  <span className="text-[11px] text-slate-400">
+                                    ({Number(growth) >= 0 ? `+${growth}%` : `${growth}%`})
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+
+                {selectedTickers.map((t) => (
+                  <Line
+                    key={t}
+                    type="monotone"
+                    dataKey={t}
+                    name={t}
+                    stroke={TICKER_COLORS[t] || '#60a5fa'}
+                    strokeWidth={t.toUpperCase() === activePrimaryTicker.toUpperCase() ? 3 : 2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                    connectNulls={true}
+                  />
+                ))}
+
+                <Legend
+                  verticalAlign="bottom"
+                  height={32}
+                  wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
+                  formatter={(val) => <span className="text-slate-300 font-medium mr-4">{val}</span>}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           )}
         </div>
       </div>
 
-      {errorNotice && (
-        <div className="mb-3 text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-3 py-1.5">
-          {errorNotice}
-        </div>
-      )}
-
-      {/* Chart Canvas */}
-      <div className="h-[340px] sm:h-[380px] w-full">
-        {isLoading && seriesList.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-500 text-sm font-mono">
-            Fetching comparative price series via MCP...
-          </div>
-        ) : chartData.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-500 text-sm font-mono">
-            No price records available for comparison.
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 15, right: 25, left: 10, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-
-              <XAxis
-                dataKey="formattedDate"
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
-                tickMargin={8}
-                minTickGap={40}
-              />
-
-              <YAxis
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
-                domain={['auto', 'auto']}
-                tickMargin={8}
-                tickFormatter={(v) => `${v}`}
-              />
-
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload || !payload.length) return null;
-                  return (
-                    <div className="rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[200px]">
-                      <div className="font-mono text-slate-400 pb-1.5 mb-1.5 border-b border-slate-800">
-                        Date: <span className="text-white font-semibold">{label}</span>
-                      </div>
-                      <div className="space-y-1 font-mono">
-                        {payload.map((item: any) => {
-                          const val = item.value;
-                          const growth = val ? (val - 100).toFixed(1) : '0';
-                          return (
-                            <div key={item.dataKey} className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5" style={{ color: item.color }}>
-                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                                {item.name}:
-                              </span>
-                              <span className="font-semibold tabular-nums text-white">
-                                {val} <span className="text-[11px] text-slate-400">({Number(growth) >= 0 ? `+${growth}%` : `${growth}%`})</span>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-
-              {seriesList.map((s) => (
-                <Line
-                  key={s.ticker}
-                  type="monotone"
-                  dataKey={s.ticker}
-                  name={s.ticker}
-                  stroke={s.color}
-                  strokeWidth={2.25}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  isAnimationActive={false}
-                  connectNulls={true}
-                />
-              ))}
-
-              <Legend
-                verticalAlign="bottom"
-                height={32}
-                wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
-                formatter={(val) => <span className="text-slate-300 font-medium mr-4">{val}</span>}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Cumulative Return Highlights Row */}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-slate-800/80 pt-4">
-        {seriesList.map((s) => {
-          const ret = totalReturns[s.ticker];
-          const isPos = (ret ?? 0) >= 0;
-          return (
-            <div
-              key={s.ticker}
-              className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/60 border border-slate-800"
-            >
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="text-xs font-mono font-bold text-slate-200">{s.ticker}</span>
-              </div>
-              <div className="text-right">
-                <span
-                  className={`text-xs font-mono font-bold tabular-nums ${
-                    isPos ? 'text-emerald-400' : 'text-rose-400'
-                  }`}
-                >
-                  {ret !== undefined ? (isPos ? `+${(ret * 100).toFixed(1)}%` : `${(ret * 100).toFixed(1)}%`) : '—'}
+      {/* Multi-Ticker Forward Projections Comparison Table */}
+      <div className="border-t border-slate-800/90 pt-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Multi-Ticker 10-Year Forward Projections Comparison</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 border border-blue-800 text-blue-300">
+                  {selectedTickers.length} Tickers
                 </span>
-                <span className="block text-[10px] text-slate-500">{years}Y Cumulative</span>
-              </div>
+              </h3>
             </div>
-          );
-        })}
+            <p className="text-xs text-slate-400 mt-0.5">
+              Side-by-side terminal wealth projections modeled on initial capital of{' '}
+              <strong className="text-slate-200">{sym}{initialAmount.toLocaleString()}</strong> plus{' '}
+              <strong className="text-slate-200">{sym}{monthlyContribution.toLocaleString()}/mo</strong> over 10 years (Total Invested: {sym}{totalContributed.toLocaleString()}).
+            </p>
+          </div>
+        </div>
+
+        {/* Comparison Table */}
+        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80 shadow-lg">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-900/90 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <th className="py-3 px-4">ETF / Benchmark</th>
+                <th className="py-3 px-3 text-right">Hist. CAGR</th>
+                <th className="py-3 px-3 text-right">Volatility</th>
+                <th className="py-3 px-3 text-right">Max Drawdown</th>
+                <th className="py-3 px-3 text-right text-rose-400">10Y Bear (-20%)</th>
+                <th className="py-3 px-3 text-right text-amber-400">10Y Cons (-10%)</th>
+                <th className="py-3 px-4 text-right text-blue-300 bg-blue-950/30">10Y Base Horizon</th>
+                <th className="py-3 px-3 text-right text-sky-400">10Y Opt (+10%)</th>
+                <th className="py-3 px-3 text-right text-emerald-400">10Y Bull (+20%)</th>
+                <th className="py-3 px-4 text-right">Projected Net Gain</th>
+                <th className="py-3 px-3 text-right">MoIC</th>
+                <th className="py-3 px-3 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/70 text-xs font-mono tabular-nums">
+              {selectedTickers.map((t) => {
+                const item = tickerDataMap[t];
+                const color = TICKER_COLORS[t] || '#60a5fa';
+                const isPrimary = t.toUpperCase() === activePrimaryTicker.toUpperCase();
+                const metrics = item?.metrics;
+                const scenarios = item?.scenarios || [];
+
+                const baseScen = scenarios.find((s) => s.adjustment === 0);
+                const bearScen = scenarios.find((s) => s.adjustment === -0.2);
+                const consScen = scenarios.find((s) => s.adjustment === -0.1);
+                const optScen = scenarios.find((s) => s.adjustment === 0.1);
+                const bullScen = scenarios.find((s) => s.adjustment === 0.2);
+
+                const isTopCagr = t === topCagrTicker;
+                const isLowestVol = t === lowestVolTicker;
+
+                return (
+                  <tr
+                    key={t}
+                    className={`hover:bg-slate-850/50 transition-colors ${
+                      isPrimary ? 'bg-blue-950/25 font-medium' : ''
+                    }`}
+                  >
+                    {/* Ticker & Fund Name */}
+                    <td className="py-3.5 px-4 font-sans">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                        <div>
+                          <div className="flex items-center gap-1.5 font-bold font-mono text-white text-sm">
+                            <span>{t}</span>
+                            {isPrimary && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-600 text-white font-sans font-normal">
+                                Active Focus
+                              </span>
+                            )}
+                            {isTopCagr && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-sans font-normal flex items-center gap-0.5">
+                                <Award className="h-3 w-3" />
+                                Top CAGR
+                              </span>
+                            )}
+                            {isLowestVol && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950 border border-sky-800 text-sky-300 font-sans font-normal">
+                                Lowest Risk
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate max-w-[170px]">
+                            {item?.name || t}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Historical CAGR */}
+                    <td className="py-3.5 px-3 text-right font-bold text-slate-100">
+                      {metrics ? (
+                        <span className={metrics.cagr > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {metrics.cagr > 0 ? `+${formatPct(metrics.cagr)}` : formatPct(metrics.cagr)}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+
+                    {/* Volatility */}
+                    <td className="py-3.5 px-3 text-right text-slate-300">
+                      {metrics ? formatPct(metrics.annualized_volatility) : '—'}
+                    </td>
+
+                    {/* Max Drawdown */}
+                    <td className="py-3.5 px-3 text-right text-rose-400 font-medium">
+                      {metrics ? formatPct(metrics.max_drawdown) : '—'}
+                    </td>
+
+                    {/* Severe Bear (-20%) */}
+                    <td className="py-3.5 px-3 text-right text-rose-300">
+                      {bearScen ? formatCurrency(bearScen.final_value) : '—'}
+                    </td>
+
+                    {/* Conservative (-10%) */}
+                    <td className="py-3.5 px-3 text-right text-amber-300">
+                      {consScen ? formatCurrency(consScen.final_value) : '—'}
+                    </td>
+
+                    {/* 10Y Base Horizon (Highlighted) */}
+                    <td className="py-3.5 px-4 text-right font-extrabold text-blue-200 bg-blue-950/30 text-sm">
+                      {baseScen ? formatCurrency(baseScen.final_value) : '—'}
+                    </td>
+
+                    {/* Optimistic (+10%) */}
+                    <td className="py-3.5 px-3 text-right text-sky-300">
+                      {optScen ? formatCurrency(optScen.final_value) : '—'}
+                    </td>
+
+                    {/* Strong Bull (+20%) */}
+                    <td className="py-3.5 px-3 text-right text-emerald-400 font-bold">
+                      {bullScen ? formatCurrency(bullScen.final_value) : '—'}
+                    </td>
+
+                    {/* Projected Net Gain */}
+                    <td className="py-3.5 px-4 text-right font-semibold">
+                      {baseScen ? (
+                        <span className={baseScen.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {baseScen.total_gain >= 0 ? `+${formatCurrency(baseScen.total_gain)}` : formatCurrency(baseScen.total_gain)}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+
+                    {/* MoIC */}
+                    <td className="py-3.5 px-3 text-right font-bold text-slate-200">
+                      {baseScen ? `${baseScen.multiple.toFixed(2)}x` : '—'}
+                    </td>
+
+                    {/* Set as Primary Focus Button */}
+                    <td className="py-3.5 px-3 text-center">
+                      {!isPrimary ? (
+                        <button
+                          type="button"
+                          onClick={() => onSelectPrimaryTicker(t)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-sans font-medium text-blue-400 hover:text-white bg-blue-950/60 hover:bg-blue-600 border border-blue-800/60 rounded transition-all whitespace-nowrap"
+                        >
+                          <span>Focus</span>
+                          <ArrowRight className="h-3 w-3" />
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 font-sans">Active</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );

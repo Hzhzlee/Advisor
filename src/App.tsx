@@ -289,8 +289,15 @@ export default function App() {
           years={years}
         />
 
-        {/* 4. Chart 2: Comparative Horizon (Indexed to 100) */}
-        <BenchmarkComparisonChart years={years} />
+        {/* 4. Chart 2: Comparative Horizon (Indexed to 100) & Multi-Ticker Projected Values Table */}
+        <BenchmarkComparisonChart
+          years={years}
+          initialAmount={initialAmount}
+          monthlyContribution={monthlyContribution}
+          currency={currency}
+          activePrimaryTicker={ticker}
+          onSelectPrimaryTicker={(t) => setTicker(t)}
+        />
 
         {/* 5. Summary Table: Deterministic and Monte Carlo Scenarios */}
         <SummaryTable
