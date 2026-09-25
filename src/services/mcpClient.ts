@@ -296,44 +296,6 @@ class McpClientService {
       n_paths: nPaths
     });
   }
-
-  public async assistantQuery(
-    message: string,
-    context?: any,
-    conversationHistory?: any[]
-  ): Promise<{ reply: string }> {
-    try {
-      const res = await this.callTool<{ reply: string }>('assistant_query', {
-        message,
-        context,
-        conversationHistory,
-      });
-      if (res && res.reply) {
-        return res;
-      }
-    } catch (err: any) {
-      console.warn('MCP assistant_query tool call error, trying direct endpoint:', err);
-    }
-
-    try {
-      const resp = await fetch('/api/assistant/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context, conversationHistory }),
-      });
-      const contentType = resp.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await resp.json();
-        return { reply: data.reply || data.error || 'No response generated.' };
-      }
-    } catch (fallbackErr) {
-      console.warn('Fallback direct fetch failed:', fallbackErr);
-    }
-
-    return {
-      reply: 'The assistant is currently analyzing the portfolio dynamics. Please submit your question again in a moment.'
-    };
-  }
 }
 
 export const mcpClient = new McpClientService();

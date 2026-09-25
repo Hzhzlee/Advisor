@@ -5,8 +5,6 @@
  * Exposes 4 tools: get_price_history, compute_metrics, project_scenarios, monte_carlo.
  */
 
-import { generateAssistantReply } from '../src/services/geminiServer.ts';
-
 export interface PricePoint {
   date: string;
   close: number;
@@ -162,35 +160,6 @@ const TOOLS = [
         }
       },
       required: ["prices"]
-    }
-  },
-  {
-    name: "assistant_query",
-    description: "Submit an inquiry to the Gemini-powered ETF quantitative analyst assistant grounded in current portfolio parameters.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        message: {
-          type: "string",
-          description: "The user query or question"
-        },
-        context: {
-          type: "object",
-          description: "Current portfolio context including primaryTicker, currency, initialAmount, monthlyContribution, years, primaryMetrics, comparedTickers"
-        },
-        conversationHistory: {
-          type: "array",
-          description: "Recent conversation history",
-          items: {
-            type: "object",
-            properties: {
-              role: { type: "string" },
-              text: { type: "string" }
-            }
-          }
-        }
-      },
-      required: ["message"]
     }
   }
 ];
@@ -615,19 +584,6 @@ export async function handleMcpPayload(body: any): Promise<any> {
             const contribution = typeof args.monthly_contribution === "number" ? args.monthly_contribution : 500;
             const paths = typeof args.n_paths === "number" ? args.n_paths : 1000;
             toolOutput = calculateMonteCarlo(args.prices, startVal, years, contribution, paths);
-            break;
-          }
-
-          case "assistant_query": {
-            if (!args.message || typeof args.message !== "string") {
-              throw new Error("Missing required argument 'message'.");
-            }
-            const reply = await generateAssistantReply(
-              args.message,
-              args.context || {},
-              args.conversationHistory || []
-            );
-            toolOutput = { reply };
             break;
           }
 

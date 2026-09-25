@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import handler from './api/mcp.ts';
-import { generateAssistantReply } from './src/services/geminiServer.ts';
 
 dotenv.config();
 
@@ -35,25 +34,6 @@ async function startServer() {
     }
   });
 
-  // Dedicated Assistant Query Endpoint with guaranteed JSON response
-  app.post('/api/assistant/query', async (req, res) => {
-    try {
-      const { message, context, conversationHistory } = req.body || {};
-
-      if (!message || typeof message !== 'string') {
-        return res.status(200).json({ reply: 'Please provide a question or topic to discuss.' });
-      }
-
-      const reply = await generateAssistantReply(message, context, conversationHistory);
-      return res.status(200).json({ reply });
-    } catch (err: any) {
-      console.error('Gemini Assistant Query error:', err);
-      return res.status(200).json({
-        reply: 'The assistant is currently analyzing historical ETF dynamics. Please rephrase or try again in a moment.'
-      });
-    }
-  });
-
   // Check if running in production mode
   const isProd = process.env.NODE_ENV === 'production';
 
@@ -78,7 +58,6 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[ETF Horizon] Server running on http://0.0.0.0:${PORT}`);
     console.log(`[ETF Horizon] MCP endpoint active at http://0.0.0.0:${PORT}/api/mcp`);
-    console.log(`[ETF Horizon] Gemini Assistant endpoint active at http://0.0.0.0:${PORT}/api/assistant/query`);
   });
 }
 
