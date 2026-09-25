@@ -180,22 +180,22 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
     if (!dataItem) return null;
 
     return (
-      <div className="rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[240px]">
-        <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
-          <span className="font-semibold text-slate-200">
-            Year: <span className="font-mono text-blue-400">{label}</span>
+      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-xl min-w-[240px]">
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+          <span className="font-semibold text-slate-900">
+            Year: <span className="font-mono text-blue-600 font-bold">{label}</span>
           </span>
-          <span className="text-[10px] font-mono text-slate-400">
+          <span className="text-[10px] font-mono text-slate-500">
             {dataItem.isFuture ? '10Y Forward' : 'Historical Trajectory'}
           </span>
         </div>
 
         <div className="space-y-1.5 font-mono">
           {dataItem.historical !== null && dataItem.historical !== undefined && (
-            <div className="flex flex-col gap-0.5 pb-1 border-b border-slate-800/80">
-              <div className="flex items-center justify-between text-slate-200">
-                <span className="flex items-center gap-1.5 text-blue-400">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" />
+            <div className="flex flex-col gap-0.5 pb-1 border-b border-slate-100">
+              <div className="flex items-center justify-between text-slate-900">
+                <span className="flex items-center gap-1.5 text-blue-600 font-medium">
+                  <span className="h-2 w-2 rounded-full bg-blue-600" />
                   Portfolio Value:
                 </span>
                 <span className="font-bold tabular-nums">
@@ -203,9 +203,9 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
                 </span>
               </div>
               {dataItem.rawClosePrice && (
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                <div className="flex items-center justify-between text-[10px] text-slate-500">
                   <span>ETF Share Price:</span>
-                  <span className="tabular-nums font-semibold text-slate-300">
+                  <span className="tabular-nums font-semibold text-slate-700">
                     {sym}{dataItem.rawClosePrice.toFixed(2)}
                   </span>
                 </div>
@@ -255,15 +255,15 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
   };
 
   return (
-    <section id="projections" className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-sm">
+    <section id="projections" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
               Chart 1: Historical Performance & 10-Year Forward Projections
             </h2>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-600 mt-0.5">
             Solid historical line flowing into five scenario projections (dashed) with Monte Carlo 10th-90th percentile band.
           </p>
         </div>
@@ -274,10 +274,10 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
           <button
             type="button"
             onClick={() => setUseDynamicScale(!useDynamicScale)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
               useDynamicScale
-                ? 'bg-blue-950/80 border-blue-700 text-blue-300'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
             }`}
             title="Toggle dynamic scale range based on actual prices vs fixed 0-baseline"
           >
@@ -289,10 +289,10 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
           <button
             type="button"
             onClick={() => setShowMonteCarloBand(!showMonteCarloBand)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
               showMonteCarloBand
-                ? 'bg-blue-950/80 border-blue-800 text-blue-300'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
             }`}
           >
             <Layers className="h-3.5 w-3.5" />
@@ -317,19 +317,19 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
                 </linearGradient>
               </defs>
 
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
 
               <XAxis
                 dataKey="label"
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                stroke="#94a3b8"
+                tick={{ fill: '#475569', fontSize: 11, fontFamily: 'var(--font-mono)' }}
                 tickMargin={10}
                 interval="preserveStartEnd"
               />
 
               <YAxis
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                stroke="#94a3b8"
+                tick={{ fill: '#475569', fontSize: 11, fontFamily: 'var(--font-mono)' }}
                 tickFormatter={(val) => {
                   if (val >= 1000000) return `${sym}${(val / 1000000).toFixed(1)}M`;
                   if (val >= 1000) return `${sym}${(val / 1000).toFixed(0)}k`;
@@ -360,10 +360,10 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="historical"
-                stroke="#60a5fa"
+                stroke="#2563eb"
                 strokeWidth={3}
-                dot={{ r: 3, fill: '#60a5fa', strokeWidth: 0 }}
-                activeDot={{ r: 5, fill: '#93c5fd' }}
+                dot={{ r: 3, fill: '#2563eb', strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: '#3b82f6' }}
                 name={`Historical Price (${ticker})`}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -373,7 +373,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="scen_p20"
-                stroke="#10b981"
+                stroke="#059669"
                 strokeWidth={2}
                 strokeDasharray="5 4"
                 dot={false}
@@ -383,7 +383,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="scen_p10"
-                stroke="#38bdf8"
+                stroke="#0284c7"
                 strokeWidth={1.75}
                 strokeDasharray="4 3"
                 dot={false}
@@ -393,7 +393,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="scen_0"
-                stroke="#3b82f6"
+                stroke="#2563eb"
                 strokeWidth={2.5}
                 strokeDasharray="6 3"
                 dot={false}
@@ -403,7 +403,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="scen_m10"
-                stroke="#fb923c"
+                stroke="#d97706"
                 strokeWidth={1.75}
                 strokeDasharray="4 3"
                 dot={false}
@@ -413,7 +413,7 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="scen_m20"
-                stroke="#f43f5e"
+                stroke="#e11d48"
                 strokeWidth={2}
                 strokeDasharray="5 4"
                 dot={false}
@@ -425,21 +425,21 @@ export const ProjectionChart: React.FC<ProjectionChartProps> = ({
                 verticalAlign="bottom"
                 height={40}
                 wrapperStyle={{ paddingTop: 16, fontSize: 12 }}
-                formatter={(val) => <span className="text-slate-300 font-medium mr-3">{val}</span>}
+                formatter={(val) => <span className="text-slate-700 font-semibold mr-3">{val}</span>}
               />
             </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between text-[11px] text-slate-500 border-t border-slate-800/80 pt-3">
+      <div className="mt-3 flex flex-wrap items-center justify-between text-[11px] text-slate-600 border-t border-slate-200 pt-3">
         <div className="flex items-center gap-1.5">
-          <Info className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+          <Info className="h-3.5 w-3.5 text-blue-600 shrink-0" />
           <span>
             Dynamic range adjusts vertical scaling to the active price data. Range: {sym}{dynamicYDomain[0].toLocaleString()} – {sym}{dynamicYDomain[1].toLocaleString()}.
           </span>
         </div>
-        <div className="font-mono text-slate-400">
+        <div className="font-mono text-slate-500">
           Annual Points · 10-Year Horizon
         </div>
       </div>

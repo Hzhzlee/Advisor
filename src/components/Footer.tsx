@@ -3,20 +3,20 @@ import { ShieldCheck, Info } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="w-full border-t border-slate-850 bg-slate-950/90 py-8 mt-12 text-xs text-slate-500">
+    <footer className="w-full border-t border-slate-200 bg-white py-8 mt-12 text-xs text-slate-600">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-4">
         {/* Regulatory & Methodology Disclaimer */}
-        <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-850 flex items-start gap-3 text-slate-400">
-          <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+        <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 flex items-start gap-3 text-slate-600">
+          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            <strong className="text-slate-300">Notice:</strong> Projections are illustrative and based on historical dividend-adjusted prices (total returns include reinvested dividends). Modeling excludes platform fees and taxes, and does not constitute financial advice.
+            <strong className="text-slate-800">Notice:</strong> Projections are illustrative and based on historical dividend-adjusted prices (total returns include reinvested dividends). Modeling excludes platform fees and taxes, and does not constitute financial advice.
           </p>
         </div>
 
         {/* System & Architecture Info */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 font-mono text-[11px] pt-2">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
+            <ShieldCheck className="h-3.5 w-3.5 text-slate-500" />
             <span>ETF Horizon · Total Return Adjusted Price Series & MCP Serverless Architecture</span>
           </div>
 

@@ -187,7 +187,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-slate-50/60 text-slate-900 flex flex-col antialiased">
       {/* Top Bar Contract Navigation */}
       <Header
         onOpenCsvUpload={() => setIsCsvModalOpen(true)}
@@ -200,21 +200,21 @@ export default function App() {
       {/* Main Workspace Canvas */}
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Title Header Banner */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-slate-850">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-display">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-display">
               ETF Horizon Analytics
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            <p className="text-xs sm:text-sm text-slate-600 mt-1">
               Historical performance analytics and 10-year forward projection model.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-mono text-slate-400">
+          <div className="flex items-center gap-3 text-xs font-mono text-slate-600">
             <span className="flex items-center gap-1.5">
-              <Database className="h-3.5 w-3.5 text-blue-400" />
+              <Database className="h-3.5 w-3.5 text-blue-600" />
               <span>Data Source:</span>
-              <span className="text-slate-200 font-semibold">
+              <span className="text-slate-900 font-semibold">
                 {dataSource === 'api'
                   ? 'Yahoo Finance Public API (Zero Key)'
                   : dataSource === 'benchmark'
@@ -227,11 +227,11 @@ export default function App() {
 
         {/* API Error / Fallback Notification Banner */}
         {errorMessage && (
-          <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
             <div className="flex items-start gap-2.5">
-              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <span className="font-semibold text-amber-300">Data Connectivity Notice: </span>
+                <span className="font-semibold text-amber-800">Data Connectivity Notice: </span>
                 {errorMessage}
               </div>
             </div>
@@ -240,7 +240,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsCsvModalOpen(true)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-900/60 hover:bg-amber-800 border border-amber-700/80 text-white font-medium text-xs transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-medium text-xs transition-colors"
               >
                 <UploadCloud className="h-3.5 w-3.5" />
                 <span>Upload CSV / Fallback</span>

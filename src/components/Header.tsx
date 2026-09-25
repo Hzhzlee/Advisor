@@ -17,13 +17,13 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleCurrency,
 }) => {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Zone 1: Single text element brand wordmark */}
         <div className="flex items-center gap-3">
           <a
             href="/"
-            className="font-display text-xl font-extrabold tracking-tight text-white hover:text-blue-400 transition-colors"
+            className="font-display text-xl font-extrabold tracking-tight text-slate-900 hover:text-blue-600 transition-colors"
           >
             ETF Horizon
           </a>
@@ -33,11 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Zone 2: Navigation links */}
-        <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-400">
-          <a href="#comparative" className="hover:text-white transition-colors">
+        <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600">
+          <a href="#comparative" className="hover:text-slate-900 transition-colors">
             10-Year Multi-Ticker Horizon
           </a>
-          <a href="#summary" className="hover:text-white transition-colors">
+          <a href="#summary" className="hover:text-slate-900 transition-colors">
             Scenario Ledger
           </a>
           <a
@@ -46,9 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
               e.preventDefault();
               onScrollToMcp();
             }}
-            className="flex items-center gap-1.5 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 hover:text-slate-900 transition-colors"
           >
-            <Activity className="h-3.5 w-3.5 text-blue-400" />
+            <Activity className="h-3.5 w-3.5 text-blue-600" />
             <span>MCP Activity</span>
           </a>
         </nav>
@@ -59,20 +59,20 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onToggleCurrency}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-mono font-medium rounded border border-slate-800 bg-slate-900/90 text-slate-300 hover:border-slate-700 hover:text-white transition-colors whitespace-nowrap"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-mono font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:text-slate-900 transition-colors whitespace-nowrap shadow-xs"
             title="Toggle Base Currency Display"
           >
             <span className="text-slate-500">Base:</span>
-            <span className="text-blue-400 font-semibold">{currency === 'SGD' ? 'S$ (SGD)' : '$ (USD)'}</span>
+            <span className="text-blue-600 font-bold">{currency === 'SGD' ? 'S$ (SGD)' : '$ (USD)'}</span>
           </button>
 
           {/* CSV Fallback Button */}
           <button
             type="button"
             onClick={onOpenCsvUpload}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-200 bg-slate-900 border border-slate-800 rounded hover:bg-slate-800 hover:text-white transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-colors whitespace-nowrap shadow-xs"
           >
-            <UploadCloud className="h-3.5 w-3.5 text-blue-400" />
+            <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
             <span className="hidden sm:inline">CSV Data Fallback</span>
             <span className="sm:hidden">CSV</span>
           </button>
@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onScrollToMcp}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-medium rounded border border-slate-800/90 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:bg-slate-850 transition-colors whitespace-nowrap"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100 transition-colors whitespace-nowrap shadow-xs"
             title="Inspect Model Context Protocol server activity"
           >
             <span className="relative flex h-2 w-2">
@@ -98,8 +98,8 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               />
             </span>
-            <Server className="h-3.5 w-3.5 text-slate-400 hidden xs:inline" />
-            <span className="hidden sm:inline text-slate-300">MCP: JSON-RPC 2.0</span>
+            <Server className="h-3.5 w-3.5 text-slate-500 hidden xs:inline" />
+            <span className="hidden sm:inline text-slate-700 font-medium">MCP: JSON-RPC 2.0</span>
           </button>
         </div>
       </div>
