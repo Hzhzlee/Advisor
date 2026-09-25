@@ -8,7 +8,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { Controls } from './components/Controls';
 import { KpiCards } from './components/KpiCards';
-import { ProjectionChart } from './components/ProjectionChart';
 import { BenchmarkComparisonChart } from './components/BenchmarkComparisonChart';
 import { SummaryTable } from './components/SummaryTable';
 import { McpActivityPanel } from './components/McpActivityPanel';
@@ -276,20 +275,7 @@ export default function App() {
           years={years}
         />
 
-        {/* 3. Chart 1: Historical Performance flowing into 5 Forward Projections */}
-        <ProjectionChart
-          ticker={ticker}
-          prices={prices}
-          metrics={metrics}
-          scenarios={scenarios}
-          monteCarlo={monteCarlo}
-          initialAmount={initialAmount}
-          monthlyContribution={monthlyContribution}
-          currency={currency}
-          years={years}
-        />
-
-        {/* 4. Chart 2: Comparative Horizon (Indexed to 100) & Multi-Ticker Projected Values Table */}
+        {/* 3. Multi-Ticker 10-Year Horizon Comparison Chart & Projections Table */}
         <BenchmarkComparisonChart
           years={years}
           initialAmount={initialAmount}
@@ -299,7 +285,7 @@ export default function App() {
           onSelectPrimaryTicker={(t) => setTicker(t)}
         />
 
-        {/* 5. Summary Table: Deterministic and Monte Carlo Scenarios */}
+        {/* 4. Single-Ticker Detailed Scenario Breakdown & Monte Carlo Ledger */}
         <SummaryTable
           scenarios={scenarios}
           monteCarlo={monteCarlo}

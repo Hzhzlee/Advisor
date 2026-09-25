@@ -34,14 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 2: Navigation links */}
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-400">
-          <a href="#projections" className="hover:text-white transition-colors">
-            Forward Projections
-          </a>
           <a href="#comparative" className="hover:text-white transition-colors">
-            Comparative Horizon
+            10-Year Multi-Ticker Horizon
           </a>
           <a href="#summary" className="hover:text-white transition-colors">
-            Scenarios Ledger
+            Scenario Ledger
           </a>
           <a
             href="#mcp-telemetry"

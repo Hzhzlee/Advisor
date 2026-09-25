@@ -12,7 +12,7 @@ import {
 import { mcpClient } from '../services/mcpClient';
 import { BENCHMARKS } from '../data/benchmarks';
 import { PricePoint, MetricResults, ScenarioResult } from '../types';
-import { Plus, X, ArrowUpRight, TrendingUp, ShieldAlert, Award, ArrowRight, Minimize2, Maximize2, Layers } from 'lucide-react';
+import { Plus, X, Award, ArrowRight, Minimize2, Maximize2, TrendingUp, Calendar, DollarSign } from 'lucide-react';
 
 interface BenchmarkComparisonChartProps {
   years: number;
@@ -59,9 +59,10 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [useDynamicScale, setUseDynamicScale] = useState(true);
+  const [chartViewMode, setChartViewMode] = useState<'forward_projections' | 'historical_indexed'>('forward_projections');
 
   const sym = currency === 'SGD' ? 'S$' : '$';
-  const totalContributed = initialAmount + years * 12 * monthlyContribution;
+  const totalContributed = initialAmount + 10 * 12 * monthlyContribution;
 
   // Fetch prices, compute metrics, and run scenario projections for each selected ticker
   useEffect(() => {
@@ -215,13 +216,48 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
     setErrorNotice(null);
   };
 
-  // Re-index all series to 100 at the earliest shared starting point
-  const { chartData, totalReturns } = useMemo(() => {
+  // 1. Dataset for 10-Year Forward Wealth Projections across all selected tickers
+  const forwardProjectionsData = useMemo(() => {
     const activeSeries = selectedTickers
       .map((t) => tickerDataMap[t])
-      .filter((item): item is TickerAnalytics => Boolean(item && item.prices.length > 0));
+      .filter((item): item is TickerAnalytics => Boolean(item && item.scenarios && item.scenarios.length > 0));
 
-    if (activeSeries.length === 0) return { chartData: [], totalReturns: {} };
+    if (activeSeries.length === 0) return [];
+
+    const currentYear = new Date().getFullYear();
+    const rows: any[] = [];
+
+    for (let yr = 0; yr <= 10; yr++) {
+      const row: any = {
+        year: yr,
+        label: yr === 0 ? `${currentYear} (Now)` : `Year ${yr} (${currentYear + yr})`,
+        displayLabel: yr === 0 ? 'Now' : `Yr ${yr}`,
+      };
+
+      activeSeries.forEach((s) => {
+        const baseScen = s.scenarios.find((sc) => sc.adjustment === 0) || s.scenarios[2];
+        if (baseScen) {
+          const pt = baseScen.trajectory.find((t) => t.year === yr);
+          if (pt) {
+            row[s.ticker] = pt.value;
+            row[`${s.ticker}_contributed`] = pt.totalContributed;
+          }
+        }
+      });
+
+      rows.push(row);
+    }
+
+    return rows;
+  }, [selectedTickers, tickerDataMap]);
+
+  // 2. Dataset for Historical Normalized Performance (Base 100)
+  const historicalIndexedData = useMemo(() => {
+    const activeSeries = selectedTickers
+      .map((t) => tickerDataMap[t])
+      .filter((item): item is TickerAnalytics => Boolean(item && item.prices && item.prices.length > 0));
+
+    if (activeSeries.length === 0) return [];
 
     const dateSet = new Set<string>();
     activeSeries.forEach((s) => s.prices.forEach((p) => dateSet.add(p.date)));
@@ -235,15 +271,11 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
       lastPrice: s.prices[s.prices.length - 1]?.close || 1,
     }));
 
-    const returns: Record<string, number> = {};
-    seriesMaps.forEach((s) => {
-      returns[s.ticker] = (s.lastPrice - s.firstPrice) / s.firstPrice;
-    });
-
-    const rows = sortedDates.map((d) => {
+    return sortedDates.map((d) => {
       const row: any = {
         date: d,
         formattedDate: d.slice(0, 7),
+        displayLabel: d.slice(0, 7),
       };
 
       seriesMaps.forEach((s) => {
@@ -255,18 +287,21 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
 
       return row;
     });
-
-    return { chartData: rows, totalReturns: returns };
   }, [selectedTickers, tickerDataMap]);
 
-  // Dynamically compute tight Y-axis domain based on actual min/max index values
+  // Active chart rows based on selected view mode
+  const activeChartData = chartViewMode === 'forward_projections' ? forwardProjectionsData : historicalIndexedData;
+
+  // Dynamically compute tight Y-axis domain based on actual min/max price or wealth values
   const dynamicYDomain = useMemo(() => {
-    if (!chartData || chartData.length === 0) return [80, 250];
+    if (!activeChartData || activeChartData.length === 0) {
+      return chartViewMode === 'forward_projections' ? [initialAmount, initialAmount * 2] : [80, 250];
+    }
 
     let minVal = Infinity;
     let maxVal = -Infinity;
 
-    chartData.forEach((row) => {
+    activeChartData.forEach((row) => {
       selectedTickers.forEach((t) => {
         const val = row[t];
         if (typeof val === 'number') {
@@ -276,20 +311,28 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
       });
     });
 
-    if (!isFinite(minVal) || !isFinite(maxVal)) return [80, 250];
-
-    if (!useDynamicScale) {
-      return [0, Math.ceil(maxVal * 1.15)];
+    if (!isFinite(minVal) || !isFinite(maxVal)) {
+      return chartViewMode === 'forward_projections' ? [initialAmount, initialAmount * 2] : [80, 250];
     }
 
-    // Dynamic scale with 8% padding
-    const span = maxVal - minVal;
-    const padding = Math.max(span * 0.08, 5);
-    const paddedMin = Math.max(0, Math.floor(minVal - padding));
-    const paddedMax = Math.ceil(maxVal + padding);
+    if (!useDynamicScale) {
+      return [0, Math.ceil(maxVal * 1.12)];
+    }
 
-    return [paddedMin, paddedMax];
-  }, [chartData, selectedTickers, useDynamicScale]);
+    // Dynamic scale with tight padding
+    const span = maxVal - minVal;
+    if (chartViewMode === 'forward_projections') {
+      const padding = Math.max(span * 0.08, 1000);
+      const paddedMin = Math.max(0, Math.floor((minVal - padding) / 1000) * 1000);
+      const paddedMax = Math.ceil((maxVal + padding) / 1000) * 1000;
+      return [paddedMin, Math.max(paddedMax, paddedMin + 1000)];
+    } else {
+      const padding = Math.max(span * 0.08, 5);
+      const paddedMin = Math.max(0, Math.floor(minVal - padding));
+      const paddedMax = Math.ceil(maxVal + padding);
+      return [paddedMin, paddedMax];
+    }
+  }, [activeChartData, selectedTickers, useDynamicScale, chartViewMode, initialAmount]);
 
   // Find standout leaders among compared tickers
   const topCagrTicker = useMemo(() => {
@@ -323,21 +366,49 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
 
   return (
     <section id="comparative" className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-sm space-y-6">
-      {/* Chart 2 Header & Ticker Chips */}
+      {/* Chart Header & Controls */}
       <div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                Chart 2: Comparative Horizon (Indexed to 100)
+                Multi-Ticker 10-Year Horizon & Performance Comparison
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Compare 3 to 4 ETF benchmarks side-by-side with dynamic price scaling.
+              Side-by-side performance trajectories and wealth projections across 3 to 4 selected ETF benchmarks.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex items-center p-1 bg-slate-950 rounded-lg border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setChartViewMode('forward_projections')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all ${
+                  chartViewMode === 'forward_projections'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <DollarSign className="h-3.5 w-3.5" />
+                <span>10Y Forward Wealth ($)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartViewMode('historical_indexed')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all ${
+                  chartViewMode === 'historical_indexed'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>Historical Index (Base 100)</span>
+              </button>
+            </div>
+
             {/* Dynamic Scale Toggle */}
             <button
               type="button"
@@ -352,106 +423,118 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
               {useDynamicScale ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
               <span>{useDynamicScale ? 'Dynamic Scale (Active)' : 'Fit from 0'}</span>
             </button>
-
-            {/* Selected Ticker Chips */}
-            {selectedTickers.map((t) => {
-              const color = TICKER_COLORS[t] || '#60a5fa';
-              const isPrimary = t.toUpperCase() === activePrimaryTicker.toUpperCase();
-              return (
-                <span
-                  key={t}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-md border transition-colors ${
-                    isPrimary
-                      ? 'bg-blue-950 border-blue-600 text-white shadow-sm shadow-blue-500/20'
-                      : 'bg-slate-950 border-slate-800 text-slate-200'
-                  }`}
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                  <span>{t}</span>
-                  {isPrimary && (
-                    <span className="text-[10px] text-blue-400 font-sans">Primary</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTicker(t)}
-                    className="text-slate-500 hover:text-slate-300 ml-0.5"
-                    title={`Remove ${t}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              );
-            })}
-
-            {selectedTickers.length < 4 && (
-              <form onSubmit={handleAddTicker} className="flex items-center">
-                <input
-                  type="text"
-                  placeholder="+ Add ticker..."
-                  value={newTickerInput}
-                  onChange={(e) => setNewTickerInput(e.target.value.toUpperCase())}
-                  className="w-28 h-7 px-2 text-xs font-mono text-slate-200 bg-slate-950 border border-slate-800 rounded-md focus:outline-none focus:border-blue-500"
-                />
-                <button
-                  type="submit"
-                  className="ml-1 h-7 px-2 text-xs font-medium text-blue-400 bg-slate-950 border border-slate-800 rounded-md hover:bg-blue-900/40"
-                >
-                  <Plus className="h-3 w-3" />
-                </button>
-              </form>
-            )}
           </div>
         </div>
 
+        {/* Selected Ticker Chips & Search */}
+        <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-slate-800/80">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">
+            Comparing ({selectedTickers.length}/4):
+          </span>
+          {selectedTickers.map((t) => {
+            const color = TICKER_COLORS[t] || '#60a5fa';
+            const isPrimary = t.toUpperCase() === activePrimaryTicker.toUpperCase();
+            return (
+              <span
+                key={t}
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-md border transition-colors ${
+                  isPrimary
+                    ? 'bg-blue-950 border-blue-600 text-white shadow-sm shadow-blue-500/20'
+                    : 'bg-slate-950 border-slate-800 text-slate-200'
+                }`}
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                <span>{t}</span>
+                {isPrimary && (
+                  <span className="text-[10px] text-blue-400 font-sans">Active Focus</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTicker(t)}
+                  className="text-slate-500 hover:text-slate-300 ml-0.5"
+                  title={`Remove ${t}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            );
+          })}
+
+          {selectedTickers.length < 4 && (
+            <form onSubmit={handleAddTicker} className="flex items-center">
+              <input
+                type="text"
+                placeholder="+ Add ticker..."
+                value={newTickerInput}
+                onChange={(e) => setNewTickerInput(e.target.value.toUpperCase())}
+                className="w-28 h-7 px-2 text-xs font-mono text-slate-200 bg-slate-950 border border-slate-800 rounded-md focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                className="ml-1 h-7 px-2 text-xs font-medium text-blue-400 bg-slate-950 border border-slate-800 rounded-md hover:bg-blue-900/40"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </form>
+          )}
+        </div>
+
         {errorNotice && (
-          <div className="mb-3 text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-3 py-1.5">
+          <div className="mt-3 text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-3 py-1.5">
             {errorNotice}
           </div>
         )}
 
-        {/* Chart Canvas with Dynamic Y-Domain */}
-        <div className="h-[320px] sm:h-[360px] w-full">
-          {isLoading && chartData.length === 0 ? (
+        {/* Chart Canvas with Dynamic Range */}
+        <div className="h-[380px] sm:h-[420px] w-full pt-4">
+          {isLoading && activeChartData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-500 text-sm font-mono">
-              Loading price series for selected benchmarks...
+              Loading price series and computing forward projections...
             </div>
-          ) : chartData.length === 0 ? (
+          ) : activeChartData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-500 text-sm font-mono">
-              No price records available.
+              No comparison records available.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 15, right: 25, left: 10, bottom: 20 }}>
+              <LineChart data={activeChartData} margin={{ top: 15, right: 25, left: 15, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
 
                 <XAxis
-                  dataKey="formattedDate"
+                  dataKey={chartViewMode === 'forward_projections' ? 'displayLabel' : 'formattedDate'}
                   stroke="#64748b"
                   tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
                   tickMargin={8}
-                  minTickGap={40}
+                  minTickGap={chartViewMode === 'forward_projections' ? 10 : 40}
                 />
 
                 <YAxis
                   stroke="#64748b"
                   tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'var(--font-mono)' }}
                   domain={dynamicYDomain}
-                  tickMargin={8}
-                  tickFormatter={(v) => `${v}`}
+                  tickMargin={10}
+                  tickFormatter={(val) => {
+                    if (chartViewMode === 'forward_projections') {
+                      if (val >= 1000000) return `${sym}${(val / 1000000).toFixed(1)}M`;
+                      if (val >= 1000) return `${sym}${(val / 1000).toFixed(0)}k`;
+                      return `${sym}${val}`;
+                    }
+                    return `${val}`;
+                  }}
                 />
 
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (!active || !payload || !payload.length) return null;
                     return (
-                      <div className="rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[200px]">
-                        <div className="font-mono text-slate-400 pb-1.5 mb-1.5 border-b border-slate-800">
-                          Date: <span className="text-white font-semibold">{label}</span>
+                      <div className="rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[220px]">
+                        <div className="font-mono text-slate-400 pb-1.5 mb-1.5 border-b border-slate-800 flex justify-between">
+                          <span>{chartViewMode === 'forward_projections' ? 'Projection:' : 'Observation:'}</span>
+                          <span className="text-white font-semibold">{label}</span>
                         </div>
-                        <div className="space-y-1 font-mono">
+                        <div className="space-y-1.5 font-mono">
                           {payload.map((item: any) => {
                             const val = item.value;
-                            const growth = val ? (val - 100).toFixed(1) : '0';
                             return (
                               <div key={item.dataKey} className="flex items-center justify-between">
                                 <span className="flex items-center gap-1.5" style={{ color: item.color }}>
@@ -459,10 +542,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
                                   {item.name}:
                                 </span>
                                 <span className="font-semibold tabular-nums text-white">
-                                  {val}{' '}
-                                  <span className="text-[11px] text-slate-400">
-                                    ({Number(growth) >= 0 ? `+${growth}%` : `${growth}%`})
-                                  </span>
+                                  {chartViewMode === 'forward_projections' ? formatCurrency(val) : `${val}`}
                                 </span>
                               </div>
                             );
@@ -481,8 +561,8 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
                     name={t}
                     stroke={TICKER_COLORS[t] || '#60a5fa'}
                     strokeWidth={t.toUpperCase() === activePrimaryTicker.toUpperCase() ? 3 : 2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={chartViewMode === 'forward_projections' ? { r: 3 } : false}
+                    activeDot={{ r: 5 }}
                     isAnimationActive={false}
                     connectNulls={true}
                   />
@@ -491,7 +571,7 @@ export const BenchmarkComparisonChart: React.FC<BenchmarkComparisonChartProps> =
                 <Legend
                   verticalAlign="bottom"
                   height={32}
-                  wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
+                  wrapperStyle={{ paddingTop: 14, fontSize: 12 }}
                   formatter={(val) => <span className="text-slate-300 font-medium mr-4">{val}</span>}
                 />
               </LineChart>
