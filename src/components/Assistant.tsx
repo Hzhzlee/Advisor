@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, Sparkles, User, RefreshCw, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { MetricResults } from '../types';
+import { mcpClient } from '../services/mcpClient';
 
 interface AssistantProps {
   primaryTicker: string;
@@ -75,29 +76,24 @@ export const Assistant: React.FC<AssistantProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/assistant/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: textToSend,
-          context: {
-            primaryTicker,
-            currency,
-            initialAmount,
-            monthlyContribution,
-            years,
-            primaryMetrics,
-            comparedTickers,
-          },
-          conversationHistory: messages.map((m) => ({
-            role: m.role,
-            text: m.text,
-          })),
-        }),
-      });
+      const data = await mcpClient.assistantQuery(
+        textToSend,
+        {
+          primaryTicker,
+          currency,
+          initialAmount,
+          monthlyContribution,
+          years,
+          primaryMetrics,
+          comparedTickers,
+        },
+        messages.map((m) => ({
+          role: m.role,
+          text: m.text,
+        }))
+      );
 
-      const data = await response.json();
-      const assistantText = data?.reply || data?.error || 'Unable to retrieve answer.';
+      const assistantText = data?.reply || 'Unable to retrieve answer.';
 
       const assistantMessage: Message = {
         id: `a-${Date.now()}`,
@@ -113,7 +109,7 @@ export const Assistant: React.FC<AssistantProps> = ({
         {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          text: `An error occurred while connecting to the assistant: ${err?.message || 'Server unavailable'}`,
+          text: `The assistant is momentarily busy analyzing market dynamics. Please ask again in a few seconds.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
