@@ -220,10 +220,10 @@ async function fetchYahooPriceHistory(
       const points: PricePoint[] = [];
       for (let i = 0; i < timestamps.length; i++) {
         const t = timestamps[i];
-        // Prefer regular close, fallback to adjclose if valid
-        const rawClose = quoteCloses[i] !== null && quoteCloses[i] !== undefined
-          ? quoteCloses[i]
-          : adjCloses[i];
+        // Prefer adjusted close (adjclose) so returns include dividends, falling back to close
+        const rawClose = adjCloses[i] !== null && adjCloses[i] !== undefined
+          ? adjCloses[i]
+          : quoteCloses[i];
 
         if (typeof rawClose === "number" && !isNaN(rawClose) && rawClose > 0) {
           const dateStr = new Date(t * 1000).toISOString().slice(0, 10);
@@ -439,7 +439,7 @@ function calculateMonteCarlo(
 
     for (let m = 1; m <= totalMonths; m++) {
       const z = randomNormal();
-      const monthlyReturn = Math.exp((meanLog - 0.5 * varLog) + stdLog * z) - 1;
+      const monthlyReturn = Math.exp(meanLog + stdLog * z) - 1;
       val = Math.max(0, val * (1 + monthlyReturn) + monthlyContribution);
 
       if (m % 12 === 0) {
@@ -638,7 +638,7 @@ export async function handleMcpPayload(body: any): Promise<any> {
  * Standard Vercel Serverless Function entry point
  */
 export default async function handler(req: any, res: any) {
-  // CORS configuration for flexibility & Claude Remote MCP connectivity
+  // CORS configuration for flexibility & remote MCP client connectivity
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");

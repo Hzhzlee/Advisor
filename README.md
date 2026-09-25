@@ -135,14 +135,11 @@ Vercel will:
 
 ---
 
-## Connecting `/api/mcp` to Claude Desktop as a Remote MCP Server
+## Connecting `/api/mcp` to Remote MCP Clients
 
-You can also use this deployed MCP endpoint with Claude Desktop or any MCP-compatible agent:
+You can also use this deployed MCP endpoint with any MCP-compatible agent or client:
 
-### In `claude_desktop_config.json`:
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
+### In an MCP client configuration:
 Add the server using a lightweight HTTP proxy:
 ```json
 {
@@ -161,7 +158,7 @@ Add the server using a lightweight HTTP proxy:
   }
 }
 ```
-Restart Claude Desktop. Claude will automatically recognize the four tools (`get_price_history`, `compute_metrics`, `project_scenarios`, and `monte_carlo`).
+The client will automatically recognize the four tools (`get_price_history`, `compute_metrics`, `project_scenarios`, and `monte_carlo`).
 
 ---
 

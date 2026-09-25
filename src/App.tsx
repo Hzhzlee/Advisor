@@ -11,6 +11,7 @@ import { KpiCards } from './components/KpiCards';
 import { BenchmarkComparisonChart } from './components/BenchmarkComparisonChart';
 import { SummaryTable } from './components/SummaryTable';
 import { McpActivityPanel } from './components/McpActivityPanel';
+import { Assistant } from './components/Assistant';
 import { CsvUploadModal } from './components/CsvUploadModal';
 import { Footer } from './components/Footer';
 import { mcpClient } from './services/mcpClient';
@@ -310,6 +311,16 @@ export default function App() {
 
       {/* Regulatory Footer */}
       <Footer />
+
+      {/* Interactive Gemini AI Agent Assistant */}
+      <Assistant
+        primaryTicker={ticker}
+        currency={currency}
+        initialAmount={initialAmount}
+        monthlyContribution={monthlyContribution}
+        years={years}
+        primaryMetrics={metrics}
+      />
     </div>
   );
 }
